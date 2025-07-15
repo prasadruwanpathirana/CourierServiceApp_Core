@@ -1,4 +1,6 @@
-﻿using CourierServiceApp.Application.Exceptions;
+﻿// FINAL UPDATE: Assign delivery time per-package based on actual distance
+// Infrastructure/DeliveryScheduler.cs
+using CourierServiceApp.Application.Exceptions;
 using CourierServiceApp.Application.Interfaces;
 using CourierServiceApp.Domain;
 
@@ -25,32 +27,27 @@ namespace CourierServiceApp.Infrastructure
 
             while (pending.Any())
             {
-                // Get the vehicle that is available the earliest
                 var vehicle = vehicles.OrderBy(v => v.AvailableAt).First();
                 double currentTime = vehicle.AvailableAt;
 
-                // Select best batch (optimized by weight, time, and size)
                 var batch = FindBestFitBatch(pending, maxWeight);
 
                 if (!batch.Any())
                     throw new DeliveryScheduleException("No valid batch found within vehicle capacity.");
 
-                // Delivery time = max distance in batch / speed
                 double maxDistance = batch.Max(p => p.Distance);
-                double deliveryTime = maxDistance / speed;
-                double actualDeliveryTime = currentTime + deliveryTime;
+                double roundTripTime = (maxDistance / speed) * 2;
 
                 foreach (var pkg in batch)
                 {
-                    pkg.DeliveryTime = actualDeliveryTime;
+                    double pkgDeliveryTime = currentTime + (pkg.Distance / speed);
+                    pkg.DeliveryTime = pkgDeliveryTime;
                 }
 
-                vehicle.AvailableAt = currentTime + 2 * deliveryTime; // round trip
+                vehicle.AvailableAt = currentTime + roundTripTime;
 
                 foreach (var pkg in batch)
-                {
                     pending.Remove(pkg);
-                }
             }
         }
 
@@ -67,9 +64,9 @@ namespace CourierServiceApp.Infrastructure
                     MaxDistance = combo.Max(p => p.Distance),
                     Count = combo.Count
                 })
-                .OrderByDescending(c => c.TotalWeight)               // Prefer heavier
-                .ThenBy(c => c.MaxDistance)                          // Then faster
-                .ThenByDescending(c => c.Count)                      // Then more packages
+                .OrderByDescending(c => c.TotalWeight)
+                .ThenBy(c => c.MaxDistance)
+                .ThenByDescending(c => c.Count)
                 .FirstOrDefault();
 
             return bestCombo?.Packages ?? new List<Package>();
@@ -80,7 +77,7 @@ namespace CourierServiceApp.Infrastructure
             var result = new List<List<Package>>();
             int n = packages.Count;
 
-            for (int i = 1; i < (1 << n); i++) // start from 1 to avoid empty combo
+            for (int i = 1; i < (1 << n); i++)
             {
                 var combo = new List<Package>();
                 for (int j = 0; j < n; j++)
